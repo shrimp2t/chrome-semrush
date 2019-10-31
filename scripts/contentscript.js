@@ -1,58 +1,50 @@
 'use strict';
 
-function convertArrayOfObjectsToCSV(args) {
-	var result, ctr, keys, columnDelimiter, lineDelimiter, data;
+function convertToCSV(objArray) {
+	var array = typeof objArray != 'object' ? JSON.parse(objArray) : objArray;
+	var str = '';
 
-	data = args.data || null;
-	if (data == null || !data.length) {
-		return null;
+	for (var i = 0; i < array.length; i++) {
+		var line = '';
+		for (var index in array[i]) {
+			if (line != '') line += ',';
+
+			line += array[i][index];
+		}
+
+		str += line + '\r\n';
 	}
 
-	columnDelimiter = args.columnDelimiter || ',';
-	lineDelimiter = args.lineDelimiter || '\n';
-
-	keys = Object.keys(data[0]);
-
-	result = '';
-	result += keys.join(columnDelimiter);
-	result += lineDelimiter;
-
-	data.forEach(function(item) {
-		ctr = 0;
-		keys.forEach(function(key) {
-			if (ctr > 0) result += columnDelimiter;
-
-			result += item[key];
-			ctr++;
-		});
-		result += lineDelimiter;
-	});
-
-	return result;
+	return str;
 }
 
-const downloadCSV = function(args, data) {
-	var data, filename, link;
-	var csv = convertArrayOfObjectsToCSV({
-		data: data
-	});
+function exportCSVFile(items, fileTitle) {
+	
+	// Convert Object to JSON
+	//var jsonObject = JSON.stringify(items);
+	var csv = jQuery.csv.fromObjects(items);
 
-	console.log('here here');
+	var exportedFilenmae = fileTitle + '.csv' || 'export.csv';
 
-	if (csv == null) return;
-
-	filename = args.filename || 'export.csv';
-	if (!csv.match(/^data:text\/csv/i)) {
-		csv = 'data:text/csv;charset=utf-8,' + csv;
+	var blob = new Blob([ csv ], { type: 'text/csv;charset=utf-8;' });
+	if (navigator.msSaveBlob) {
+		// IE 10+
+		navigator.msSaveBlob(blob, exportedFilenmae);
+	} else {
+		var link = document.createElement('a');
+		if (link.download !== undefined) {
+			// feature detection
+			// Browsers that support HTML5 download attribute
+			var url = URL.createObjectURL(blob);
+			link.setAttribute('href', url);
+			link.setAttribute('download', exportedFilenmae);
+			link.style.visibility = 'hidden';
+			document.body.appendChild(link);
+			link.click();
+			document.body.removeChild(link);
+		}
 	}
-	data = encodeURI(csv);
-	link = document.createElement('a');
-	link.setAttribute('href', data);
-	link.setAttribute('download', filename);
-	document.body.appendChild(link);
-	link.click();
-	document.body.removeChild(link);
-};
+}
 
 // chrome.webRequest.onCompleted.addListener(function (details) {
 // 	console.log( "Rquest details", details );
@@ -66,14 +58,22 @@ function sleep(ms) {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function getDataFromHTML(requestId = false ) {
-	if ( ! do_get_data ) {
+var headers = {
+	name: 'Name',
+	price: 'Price',
+	keywords_count: 'Keywords Count',
+	shop_name: 'Shop Name',
+	url: 'URL'
+};
+
+async function getDataFromHTML(requestId = false) {
+	if (!do_get_data) {
 		return false;
 	}
 	const $ = jQuery;
 
 	let $list = $('#root .cl-copies-list');
-	let downloadBtn = $( '#pm-download-csv-btn' );
+	let downloadBtn = $('#pm-download-csv-btn');
 
 	$list.find('.cl-copies-list__copy').each(function() {
 		let $item = $(this);
@@ -83,6 +83,8 @@ async function getDataFromHTML(requestId = false ) {
 		let price = price_txt.replace(/[^(\d+)\.(\d+)]/g, '');
 		let keywords_count = $('.cl-copies-list__keywords-count', $item).text();
 		let shop_name = $('.cl-pla-info__store', $item).text();
+		name = name.replace(/,/g, '');
+		// url = ur
 		saveData.push({ name, price, keywords_count, shop_name, url });
 	});
 
@@ -107,7 +109,8 @@ async function getDataFromHTML(requestId = false ) {
 		let nextNumber = currentPage + 1;
 		inputControl.val(nextNumber);
 		// Create a new 'change' event
-		downloadBtn.text( 'Loading...'+nextNumber+'/'+maxPage )
+		downloadBtn.text('Loading...' + nextNumber + '/' + maxPage);
+		console.log('Loading...' + nextNumber + '/' + maxPage, saveData.length);
 		nextBtn.trigger('click');
 		jQuery(document).trigger('pm_next_page', [ nextNumber ]);
 	} else {
@@ -131,11 +134,13 @@ chrome.extension.onMessage.addListener(async function(req, sender, sendResponse)
 });
 
 jQuery(document).ready(function($) {
-	let downloadBtn = $('<a id="pm-download-csv-btn" class="srf-searchbar__projects__show-project-list js-searchbar-project-list-button"/>');
+	let downloadBtn = $(
+		'<a id="pm-download-csv-btn" class="srf-searchbar__projects__show-project-list js-searchbar-project-list-button"/>'
+	);
 	downloadBtn.text('Export CSV');
 	downloadBtn.attr('href', '#');
 	$('.srf-searchbar__projects').append(downloadBtn);
-	downloadBtn.css( { 'border-radius': '4px', 'margin-left': '5px', 'background-color': '#4fae33' } );
+	downloadBtn.css({ 'border-radius': '4px', 'margin-left': '5px', 'background-color': '#4fae33' });
 
 	// Start download
 	downloadBtn.on('click', function(e) {
@@ -149,8 +154,8 @@ jQuery(document).ready(function($) {
 		do_get_data = false;
 		downloadBtn.text('Export CSV');
 		fileName = jQuery('#root .cl-elepsis-text__head').text();
-		// console.log('Download file here.......', saveData.length);
-		downloadCSV({ filename: fileName + '.csv' }, saveData);
+		console.log('Download file here.......', saveData.length);
+		exportCSVFile( saveData, fileName + '.csv' );
+		// downloadCSV({ filename: fileName + '.csv' }, saveData);
 	});
-
 });
